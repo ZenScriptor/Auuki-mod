@@ -3,6 +3,7 @@ import { kphToMps, mpsToKph, timeDiff, pad } from './utils.js';
 import { models } from './models/models.js';
 import { ControlMode, } from './ble/enums.js';
 import { TimerStatus, EventType, } from './activity/enums.js';
+import { classifyAdvance } from './watch-transition.js';
 
 // const timer = new Worker('./timer.js');
 const timer = new Worker(new URL('./timer.js', import.meta.url));
@@ -272,7 +273,7 @@ class Watch {
         }
 
         if(equals(lapTime, 4) && stepTime > 0) {
-            xf.dispatch('watch:beep', 'interval');
+            xf.dispatch('watch:interval-warning', 'interval');
         }
         xf.dispatch('watch:elapsed',  elapsed);
         xf.dispatch('watch:lapTime',  lapTime);
@@ -282,7 +283,7 @@ class Watch {
            (stepTime <= 0) &&
             this.isIntervalType('duration')) {
 
-            self.step();
+            self.step({autoAdvance: true});
         }
     }
     lap() {
@@ -308,25 +309,38 @@ class Watch {
             xf.dispatch('watch:lapTime', 0);
         }
     }
-    step() {
+    step(args = {}) {
         const self        = this;
+        const autoAdvance = args.autoAdvance ?? false;
         let i             = self.intervalIndex;
         let s             = self.stepIndex;
         let intervals     = self.intervals;
-        let steps         = intervals[i].steps;
-        let moreIntervals = i < (intervals.length  - 1);
-        let moreSteps     = s < (steps.length - 1);
+        const advanceType = classifyAdvance(intervals, i, s);
 
-        if(moreSteps) {
+        if(advanceType === 'step') {
             s += 1;
             self.nextStep(intervals, i, s);
-        } else if (moreIntervals) {
+        } else if(advanceType === 'interval') {
             i += 1;
             s  = 0;
 
             self.nextInterval(intervals, i, s);
             self.nextStep(intervals, i, s);
+            if(autoAdvance) {
+                xf.dispatch('watch:interval-complete', {
+                    intervalIndex: i - 1,
+                    nextIntervalIndex: i,
+                    final: false,
+                });
+            }
         } else {
+            if(autoAdvance) {
+                xf.dispatch('watch:interval-complete', {
+                    intervalIndex: i,
+                    nextIntervalIndex: undefined,
+                    final: true,
+                });
+            }
             xf.dispatch('workout:done');
         }
     }

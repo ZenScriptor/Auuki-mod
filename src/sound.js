@@ -35,8 +35,16 @@ function Sound(args) {
             }
         }, signal);
 
+        xf.sub('watch:interval-warning', _ => {
+            intervalWarning();
+        }, signal);
+
+        xf.sub('watch:interval-complete', _ => {
+            intervalComplete();
+        }, signal);
+
         xf.sub('watch:beep', _ => {
-            interval();
+            intervalWarning();
         }, signal);
 
         xf.sub('watch:paused', _ => {
@@ -60,7 +68,9 @@ function Sound(args) {
 
     // one standart triange wave,
     // gain is turned up and down to produce beeps,
-    function interval() {
+    function intervalWarning() {
+        if(!canPlay()) return;
+
         const options = {
             type: 'triangle',
         };
@@ -88,6 +98,34 @@ function Sound(args) {
 
         oscillator.start(time);
         oscillator.stop(time + 4.15);
+    }
+
+    function intervalComplete() {
+        if(!canPlay()) return;
+
+        oscillator = new OscillatorNode(audioContext, {type: 'sine'});
+        const gainNode = audioContext.createGain();
+
+        const high = volume / 100;
+        const low  = 0;
+        const time = audioContext.currentTime;
+
+        gainNode.gain.setValueAtTime(low, time);
+        gainNode.gain.setValueAtTime(high, time + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(Math.max(high / 8, 0.001), time + 0.18);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.38);
+
+        oscillator.frequency.setValueAtTime(notes[5].c, time);
+        oscillator.frequency.linearRampToValueAtTime(notes[5].g, time + 0.20);
+
+        oscillator.connect(gainNode).connect(audioContext.destination);
+
+        oscillator.start(time);
+        oscillator.stop(time + 0.42);
+    }
+
+    function canPlay() {
+        return exists(audioContext) && volume > 0;
     }
 
     // 2 canceling sine waves,
@@ -153,7 +191,8 @@ function Sound(args) {
     return Object.freeze({
         start,
         stop,
-        interval,
+        interval: intervalWarning,
+        intervalComplete,
     });
 }
 
